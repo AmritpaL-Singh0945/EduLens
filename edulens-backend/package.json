@@ -1,0 +1,24 @@
+{
+  "name": "edulens-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@azure/ai-projects": "^2.6.0",
+    "@azure/identity": "^4.13.3",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "multer": "^2.4.0",
+    "openai": "^7.15.0",
+    "pdf-parse-debugging-disabled": "^1.1.1"
+  }
+}
