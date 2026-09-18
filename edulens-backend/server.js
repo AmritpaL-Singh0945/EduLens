@@ -4,6 +4,10 @@ import dotenv from 'dotenv';
 import { AzureOpenAI } from 'openai';
 import multer from 'multer';
 import * as cheerio from 'cheerio';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import User from './models/User.js';
 
 // The modernized, ESM-native PDF parser!
 import pdf from 'pdf-parse-debugging-disabled';
@@ -13,6 +17,69 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// MongoDB Connection
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/edulens';
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch((err) => console.error('MongoDB connection error:', err));
+
+// Auth Routes
+app.post('/api/signup', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    
+    // Check if user exists
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email or username already exists' });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = new User({
+      username,
+      email,
+      password: hashedPassword
+    });
+
+    await newUser.save();
+    
+    // Generate token
+    const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET || 'secret_key', { expiresIn: '7d' });
+    
+    res.status(201).json({ token, user: { id: newUser._id, username, email } });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: 'Server error during signup' });
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET || 'secret_key', { expiresIn: '7d' });
+    
+    res.json({ token, user: { id: user._id, username: user.username, email: user.email } });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
 
 // Set up Multer for handling PDF uploads in memory
 const upload = multer({ storage: multer.memoryStorage() });
