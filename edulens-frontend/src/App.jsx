@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
 import { Login, Signup } from './components/Auth';
 import { Home } from './components/Home';
 import { LogOut, LayoutDashboard, History, Settings, Upload, Sun, Moon, ArrowRight, BookOpen, Trash2 } from 'lucide-react';
@@ -222,6 +222,38 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
     e.target.value = null;
   };
 
+  const handleExtractPage = async () => {
+    if (window.chrome && chrome.tabs) {
+      setLoadingStatus("Extracting page content...");
+      setIsLoading(true);
+      
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              // Get innerText of the main body
+              return document.body.innerText;
+            }
+          });
+          
+          if (results && results[0] && results[0].result) {
+            const text = results[0].result.substring(0, 5000); // Limit size
+            await handleSendMessage(`Please analyze this course content from the page "${tab.title}":\n\n${text}`, true, "Current Page");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to extract page content:", err);
+        alert("Failed to extract page content.");
+        setIsLoading(false);
+      }
+    } else {
+      alert("This feature is only available when running as a Chrome Extension.");
+    }
+  };
+
+
   const handleSendMessage = async (textToSend, skipInputCheck = false, fileName = null) => {
     const query = textToSend || input;
     if (!skipInputCheck && (!query.trim() || isLoading)) return;
@@ -277,10 +309,10 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
       <aside className="w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 hidden md:flex flex-col justify-between p-4 transition-colors duration-300 shadow-sm z-20 relative">
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between mb-8 px-2 mt-2 shrink-0">
-            <div className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition cursor-pointer">
               <BookOpen className="w-6 h-6 text-primary-600 dark:text-primary-500" />
               <span className="font-bold text-zinc-900 dark:text-white tracking-wide text-lg">EduLens</span>
-            </div>
+            </Link>
           </div>
 
           <nav className="space-y-1.5 flex-1 overflow-y-auto pr-1 scrollbar-thin">
@@ -340,15 +372,16 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
             </div>
           </div>
           
-          <nav className="space-y-1.5 flex justify-between items-center px-3 pb-2">
-            <button onClick={toggleTheme} className="p-2.5 rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition" title="Toggle theme">
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          <nav className="flex flex-col gap-1.5 px-3 pb-2">
+            <button onClick={toggleTheme} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition" title="Toggle theme">
+              {isDark ? (
+                <><Sun className="w-4 h-4" /> Light Mode</>
+              ) : (
+                <><Moon className="w-4 h-4" /> Dark Mode</>
+              )}
             </button>
-            <button className="p-2.5 rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition" title="Settings">
-              <Settings className="w-4 h-4" />
-            </button>
-            <button onClick={handleLogout} className="p-2.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition" title="Log out">
-              <LogOut className="w-4 h-4" />
+            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition" title="Log out">
+              <LogOut className="w-4 h-4" /> Log out
             </button>
           </nav>
         </div>
@@ -359,16 +392,16 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
         
         {/* Mobile Header */}
         <header className="flex justify-between items-center px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md sticky top-0 z-10 md:hidden shadow-sm">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition cursor-pointer">
             <BookOpen className="w-5 h-5 text-primary-600 dark:text-primary-500" />
             <span className="font-bold text-sm tracking-wide text-zinc-900 dark:text-zinc-100">EduLens</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={toggleTheme} className="text-zinc-500 p-2">
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Link>
+          <div className="flex items-center gap-1">
+            <button onClick={toggleTheme} className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-2.5 py-1.5 rounded-lg transition" title="Toggle theme">
+              {isDark ? <><Sun className="w-3.5 h-3.5" /> Light</> : <><Moon className="w-3.5 h-3.5" /> Dark</>}
             </button>
-            <button onClick={handleLogout} className="text-zinc-500 p-2">
-              <LogOut className="w-4 h-4" />
+            <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 px-2.5 py-1.5 rounded-lg transition ml-1" title="Log out">
+              <LogOut className="w-3.5 h-3.5" /> Exit
             </button>
           </div>
         </header>
@@ -396,12 +429,22 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
                   className="w-full bg-transparent resize-none outline-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 text-base leading-relaxed"
                 />
                 <div className="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-zinc-800/60 mt-2">
-                  <button 
-                    type="button" onClick={() => fileInputRef.current.click()}
-                    className="p-2 text-zinc-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-zinc-800 rounded-lg transition" title="Upload PDF Syllabus"
-                  >
-                    <Upload className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      type="button" onClick={() => fileInputRef.current.click()}
+                      className="p-2 text-zinc-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-zinc-800 rounded-lg transition" title="Upload PDF Syllabus"
+                    >
+                      <Upload className="w-5 h-5" />
+                    </button>
+                    {window.chrome && window.chrome.tabs && (
+                      <button 
+                        type="button" onClick={handleExtractPage}
+                        className="px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition border border-zinc-200 dark:border-zinc-700"
+                      >
+                        Analyze Current Tab
+                      </button>
+                    )}
+                  </div>
                   <button
                     onClick={() => handleSendMessage()}
                     disabled={!input.trim() || isLoading}
@@ -604,9 +647,20 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
               </div>
 
               <div className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 shadow-xl focus-within:border-primary-500 dark:focus-within:border-primary-500 transition-colors flex items-center gap-3 shrink-0 mb-4 z-10">
-                <button type="button" onClick={() => fileInputRef.current.click()} className="p-2 text-zinc-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-zinc-800 rounded-xl transition shrink-0">
-                  <Upload className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button type="button" onClick={() => fileInputRef.current.click()} className="p-2 text-zinc-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-zinc-800 rounded-xl transition">
+                    <Upload className="w-5 h-5" />
+                  </button>
+                  {window.chrome && window.chrome.tabs && (
+                    <button 
+                      type="button" onClick={handleExtractPage}
+                      className="px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition border border-zinc-200 dark:border-zinc-700"
+                      title="Analyze Current Tab"
+                    >
+                      Analyze Tab
+                    </button>
+                  )}
+                </div>
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}

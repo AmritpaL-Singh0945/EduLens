@@ -8,10 +8,10 @@ export function Home({ user }) {
       {/* Navbar */}
       <nav className="border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md sticky top-0 z-50 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition cursor-pointer">
             <BookOpen className="w-6 h-6 text-primary-600 dark:text-primary-500" />
             <span className="font-bold text-xl tracking-tight">EduLens</span>
-          </div>
+          </Link>
           <div className="flex items-center gap-4">
             {user ? (
               <Link to="/analyzer" className="text-sm font-medium hover:text-primary-600 transition">Go to Dashboard</Link>

@@ -21,7 +21,9 @@ app.use(express.json());
 // MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/edulens';
 mongoose.connect(MONGO_URI)
-  .then(() => console.log('Connected to MongoDB'))
+  .then((conn) => {
+    console.log(`Connected to MongoDB: ${conn.connection.host}`);
+  })
   .catch((err) => console.error('MongoDB connection error:', err));
 
 // Auth Routes
@@ -120,7 +122,9 @@ app.post('/api/chat', async (req, res) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const urls = latestMessage.content.match(urlRegex);
 
-    if (urls && urls.length > 0) {
+    // Only trigger URL scraping if the message is relatively short (e.g. user pasted a link)
+    // This prevents overwriting large extracted DOM or PDF text that happens to contain a URL.
+    if (urls && urls.length > 0 && latestMessage.content.length < 500) {
       try {
         const response = await fetch(urls[0]);
         const html = await response.text();

@@ -1,11 +1,26 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { BookOpen, User, Lock, Mail } from 'lucide-react';
+import { BookOpen, User, Lock, Mail, Eye, EyeOff } from 'lucide-react';
+
+const getPasswordStrength = (pass) => {
+  let score = 0;
+  if (!pass) return { score: 0, label: '', color: 'bg-zinc-200 dark:bg-zinc-700' };
+  if (pass.length >= 6) score += 1;
+  if (pass.length >= 8) score += 1;
+  if (/[A-Z]/.test(pass)) score += 1;
+  if (/[0-9]/.test(pass)) score += 1;
+  if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+
+  if (score < 2) return { score, label: 'Weak', color: 'bg-red-500' };
+  if (score < 4) return { score, label: 'Medium', color: 'bg-yellow-500' };
+  return { score, label: 'Strong', color: 'bg-green-500' };
+};
 
 export function Login({ setAuth }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -64,10 +79,18 @@ export function Login({ setAuth }) {
               </div>
               <input 
                 type="password" required
+                type={showPassword ? "text" : "password"}
                 value={password} onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg pl-10 pr-4 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition text-sm text-zinc-900 dark:text-zinc-100"
+                className="w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg pl-10 pr-10 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition text-sm text-zinc-900 dark:text-zinc-100"
                 placeholder="••••••••"
               />
+              <button 
+                type="button" 
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
@@ -92,6 +115,7 @@ export function Signup({ setAuth }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -116,6 +140,8 @@ export function Signup({ setAuth }) {
       setLoading(false);
     }
   };
+
+  const strength = getPasswordStrength(password);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-200 transition-colors duration-300 py-10 px-4">
@@ -169,11 +195,29 @@ export function Signup({ setAuth }) {
               </div>
               <input 
                 type="password" required
+                type={showPassword ? "text" : "password"}
                 value={password} onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg pl-10 pr-4 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition text-sm text-zinc-900 dark:text-zinc-100"
+                className="w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg pl-10 pr-10 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition text-sm text-zinc-900 dark:text-zinc-100"
                 placeholder="••••••••"
               />
+              <button 
+                type="button" 
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
+            {password && (
+              <div className="mt-2 flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                  <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: `${Math.max((strength.score / 5) * 100, 15)}%` }}></div>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 w-12 text-right">
+                  {strength.label}
+                </span>
+              </div>
+            )}
           </div>
 
           <div>
@@ -184,8 +228,9 @@ export function Signup({ setAuth }) {
               </div>
               <input 
                 type="password" required
+                type={showPassword ? "text" : "password"}
                 value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg pl-10 pr-4 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition text-sm text-zinc-900 dark:text-zinc-100"
+                className="w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg pl-10 pr-10 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition text-sm text-zinc-900 dark:text-zinc-100"
                 placeholder="••••••••"
               />
             </div>

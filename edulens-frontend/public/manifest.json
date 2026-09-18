@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "EduLens Analyzer",
+  "version": "1.0",
+  "description": "Course Content Analyzer and Learning Assistant.",
+  "action": {
+    "default_title": "Open EduLens"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}
