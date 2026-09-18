@@ -207,7 +207,7 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
     formData.append('file', file);
 
     try {
-      const uploadRes = await axios.post('http://localhost:5001/api/upload', formData, {
+      const uploadRes = await axios.post(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'}/api/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       const extractedText = uploadRes.data.text;
@@ -273,7 +273,7 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
 
     try {
       const apiMessages = newChatHistory.map(({ role, content }) => ({ role, content }));
-      const response = await axios.post('http://localhost:5001/api/chat', { messages: apiMessages });
+      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'}/api/chat`, { messages: apiMessages });
       
       setMessages((prev) => [...prev, { role: "assistant", content: response.data.content }]);
     } catch (error) {
