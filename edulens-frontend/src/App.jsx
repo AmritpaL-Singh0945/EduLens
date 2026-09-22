@@ -337,7 +337,8 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
       setMessages((prev) => [...prev, { role: "assistant", content: response.data.content }]);
     } catch(err) {
       console.error("Comparison error:", err);
-      alert("Failed to process comparison.");
+      const errorMsg = err.response?.data?.error || "Failed to process comparison.";
+      alert(`Error: ${errorMsg}`);
     } finally {
       setIsLoading(false);
     }
@@ -432,7 +433,8 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
       await handleSendMessage(`Please analyze this course content from my PDF:\n\n${extractedText}`, true, file.name);
     } catch (error) {
       console.error("PDF upload failed:", error);
-      alert("Failed to parse PDF.");
+      const errorMsg = error.response?.data?.error || "Failed to parse PDF. Please ensure it's a valid text-based file.";
+      alert(`Error: ${errorMsg}`);
       setIsLoading(false);
     }
     

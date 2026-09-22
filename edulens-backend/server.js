@@ -101,8 +101,13 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     
-    // It's finally just a normal, working function!
-    const data = await pdf(req.file.buffer);
+    // Only parse the first 20 pages to prevent Out-Of-Memory crashes on large PDFs
+    const options = { max: 20 };
+    const data = await pdf(req.file.buffer, options);
+    
+    if (!data.text || !data.text.trim()) {
+      return res.status(400).json({ error: "No readable text found. The PDF might be a scanned image." });
+    }
     
     // Truncate to first 12,000 characters to save AI budget
     const extractedText = data.text.substring(0, 12000); 
@@ -110,7 +115,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     res.json({ text: extractedText });
   } catch (error) {
     console.error("PDF Parse Error:", error);
-    res.status(500).json({ error: "Failed to parse PDF. Ensure it is a valid PDF file." });
+    res.status(500).json({ error: "Failed to parse PDF. Ensure it is a valid text-based PDF." });
   }
 });
 
