@@ -117,27 +117,37 @@ app.post('/api/chat', async (req, res) => {
     const { messages } = req.body;
     let contextMessages = [...messages];
 
-    // Check if the latest user message contains a URL
+    // Check if the latest user message contains URLs
     const latestMessage = contextMessages[contextMessages.length - 1];
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const urls = latestMessage.content.match(urlRegex);
 
-    // Only trigger URL scraping if the message is relatively short (e.g. user pasted a link)
-    // This prevents overwriting large extracted DOM or PDF text that happens to contain a URL.
-    if (urls && urls.length > 0 && latestMessage.content.length < 500) {
+    // Increased length threshold to allow combining extracted PDF text with URLs in comparison prompts
+    if (urls && urls.length > 0 && latestMessage.content.length < 20000) {
       try {
-        const response = await fetch(urls[0]);
-        const html = await response.text();
+        let appendedScrapes = "";
+        // Process up to 3 unique URLs to avoid timeouts/rate limits
+        const uniqueUrls = [...new Set(urls)].slice(0, 3);
         
-        const $ = cheerio.load(html);
-        $('script, style, noscript, nav, footer').remove();
-        let scrapedText = $('body').text().replace(/\s+/g, ' ').trim();
+        for (const url of uniqueUrls) {
+          try {
+            const response = await fetch(url);
+            const html = await response.text();
+            
+            const $ = cheerio.load(html);
+            $('script, style, noscript, nav, footer').remove();
+            let scrapedText = $('body').text().replace(/\s+/g, ' ').trim();
+            
+            scrapedText = scrapedText.substring(0, 8000); 
+            appendedScrapes += `\n--- Extracted from ${url} ---\n${scrapedText}\n`;
+          } catch(fetchErr) {
+            console.error(`Failed to fetch ${url}:`, fetchErr);
+          }
+        }
         
-        scrapedText = scrapedText.substring(0, 10000); 
-        
-        latestMessage.content = `The user shared this link: ${urls[0]}. Here is the extracted course text. Please analyze it:\n\n${scrapedText}`;
+        latestMessage.content = `${latestMessage.content}\n\nHere is the extracted content from the provided links to analyze:\n${appendedScrapes}`;
       } catch (err) {
-        console.error("Failed to scrape URL:", err);
+        console.error("Failed to scrape URLs:", err);
       }
     }
 

@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
 import { Login, Signup } from './components/Auth';
 import { Home } from './components/Home';
-import { LogOut, LayoutDashboard, History, Settings, Upload, Sun, Moon, ArrowRight, BookOpen, Trash2 } from 'lucide-react';
+import { LogOut, LayoutDashboard, History, Settings, Upload, Sun, Moon, ArrowRight, BookOpen, Trash2, GitCompare, X, FileText, Link as LinkIcon } from 'lucide-react';
 
 const SYSTEM_PROMPT = {
   role: "system",
@@ -24,6 +24,7 @@ You are EduLens AI, an advanced Course Content Analyzer and Learning Assistant.
 [STATE 2: STRUCTURAL ANALYSIS] - Output <ui_analysis> JSON card (Modules or Roadmap).
 [STATE 3: DEEP DIVE] - Expand on topics or teach.
 [STATE 4: ASSESSMENT] - Output <ui_mcq> JSON block for quizzes.
+[STATE 5: COMPARISON] - Output a detailed comparative analysis between multiple courses.
 </workflow_states>
 
 <operational_rules>
@@ -125,6 +126,78 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
   const [history, setHistory] = useState([]);
   const [sessionId, setSessionId] = useState(() => Date.now().toString());
   const [showHistory, setShowHistory] = useState(false);
+  
+  // Comparison State
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+  const [compareData, setCompareData] = useState({
+    course1: { type: 'url', value: '', name: '', file: null },
+    course2: { type: 'url', value: '', name: '', file: null }
+  });
+
+  const handleCompareSubmit = async () => {
+    if ((compareData.course1.type === 'url' && !compareData.course1.value) && (compareData.course1.type === 'pdf' && !compareData.course1.file)) {
+      alert("Please provide details for Course 1.");
+      return;
+    }
+    if ((compareData.course2.type === 'url' && !compareData.course2.value) && (compareData.course2.type === 'pdf' && !compareData.course2.file)) {
+      alert("Please provide details for Course 2.");
+      return;
+    }
+    
+    setIsCompareModalOpen(false);
+    
+    // Clear chat if starting a new comparison to avoid token limits
+    setMessages([SYSTEM_PROMPT]);
+    setSessionId(Date.now().toString());
+    setInput('');
+    
+    setLoadingStatus("Analyzing and comparing courses...");
+    setIsLoading(true);
+
+    try {
+      let c1Text = "";
+      let c2Text = "";
+      let c1Name = compareData.course1.name || (compareData.course1.type === 'pdf' ? compareData.course1.file.name : "Course 1");
+      let c2Name = compareData.course2.name || (compareData.course2.type === 'pdf' ? compareData.course2.file.name : "Course 2");
+
+      // Process Course 1
+      if (compareData.course1.type === 'pdf' && compareData.course1.file) {
+        const fd1 = new FormData();
+        fd1.append('file', compareData.course1.file);
+        const res1 = await axios.post(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'}/api/upload`, fd1);
+        c1Text = res1.data.text;
+      } else {
+        c1Text = compareData.course1.value;
+      }
+
+      // Process Course 2
+      if (compareData.course2.type === 'pdf' && compareData.course2.file) {
+        const fd2 = new FormData();
+        fd2.append('file', compareData.course2.file);
+        const res2 = await axios.post(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'}/api/upload`, fd2);
+        c2Text = res2.data.text;
+      } else {
+        c2Text = compareData.course2.value;
+      }
+
+      const prompt = `I want to compare two courses to understand their differences in topics, difficulty, and target audience.\n\nCourse 1 (${c1Name}):\n${c1Text}\n\nCourse 2 (${c2Name}):\n${c2Text}\n\nPlease analyze both courses and provide a detailed structured comparison. Highlight similarities, differences, and which course is better suited for specific skill levels. Use markdown formatting to make it highly readable.`;
+      
+      // We simulate handleSendMessage directly here since we reset state
+      const userMessage = { role: "user", content: prompt, fileName: `Comparison: ${c1Name} vs ${c2Name}` };
+      const newChatHistory = [SYSTEM_PROMPT, userMessage];
+      setMessages(newChatHistory);
+      
+      const apiMessages = newChatHistory.map(({ role, content }) => ({ role, content }));
+      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'}/api/chat`, { messages: apiMessages });
+      
+      setMessages((prev) => [...prev, { role: "assistant", content: response.data.content }]);
+    } catch(err) {
+      console.error("Comparison error:", err);
+      alert("Failed to process comparison.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -328,6 +401,9 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
             <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 text-sm font-medium transition shrink-0" onClick={() => fileInputRef.current.click()}>
               <Upload className="w-4 h-4" /> Upload Course
             </button>
+            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 text-sm font-medium transition shrink-0" onClick={() => setIsCompareModalOpen(true)}>
+              <GitCompare className="w-4 h-4" /> Compare Courses
+            </button>
 
             {/* History List */}
             {showHistory && (
@@ -444,6 +520,9 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
                         Analyze Current Tab
                       </button>
                     )}
+                    <button type="button" onClick={() => setIsCompareModalOpen(true)} className="p-2 text-zinc-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-zinc-800 rounded-lg transition" title="Compare Courses">
+                      <GitCompare className="w-5 h-5" />
+                    </button>
                   </div>
                   <button
                     onClick={() => handleSendMessage()}
@@ -676,6 +755,67 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
             </div>
           )}
         </main>
+
+        {/* Compare Courses Modal */}
+        {isCompareModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between p-6 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center text-primary-600 dark:text-primary-400">
+                    <GitCompare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-zinc-900 dark:text-white">Compare Courses</h2>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">Analyze similarities and differences between two courses.</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsCompareModalOpen(false)} className="p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Course 1 Panel */}
+                <div className="space-y-4 bg-zinc-50 dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-200 dark:border-zinc-700/50">
+                  <h3 className="font-bold text-zinc-900 dark:text-zinc-100">Course 1</h3>
+                  <input type="text" placeholder="Course Name (Optional)" value={compareData.course1.name} onChange={(e) => setCompareData({...compareData, course1: {...compareData.course1, name: e.target.value}})} className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-primary-500" />
+                  <div className="flex bg-zinc-200 dark:bg-zinc-800 rounded-lg p-1">
+                    <button onClick={() => setCompareData({...compareData, course1: {...compareData.course1, type: 'url'}})} className={`flex-1 flex justify-center items-center gap-2 py-1.5 text-sm rounded-md transition ${compareData.course1.type === 'url' ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm font-medium' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'}`}><LinkIcon className="w-4 h-4" /> Link</button>
+                    <button onClick={() => setCompareData({...compareData, course1: {...compareData.course1, type: 'pdf'}})} className={`flex-1 flex justify-center items-center gap-2 py-1.5 text-sm rounded-md transition ${compareData.course1.type === 'pdf' ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm font-medium' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'}`}><FileText className="w-4 h-4" /> PDF</button>
+                  </div>
+                  {compareData.course1.type === 'url' ? (
+                    <input type="text" placeholder="Paste URL here..." value={compareData.course1.value} onChange={(e) => setCompareData({...compareData, course1: {...compareData.course1, value: e.target.value}})} className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-primary-500" />
+                  ) : (
+                    <input type="file" accept=".pdf" onChange={(e) => setCompareData({...compareData, course1: {...compareData.course1, file: e.target.files[0]}})} className="w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900/30 dark:file:text-primary-400" />
+                  )}
+                </div>
+                
+                {/* Course 2 Panel */}
+                <div className="space-y-4 bg-zinc-50 dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-200 dark:border-zinc-700/50">
+                  <h3 className="font-bold text-zinc-900 dark:text-zinc-100">Course 2</h3>
+                  <input type="text" placeholder="Course Name (Optional)" value={compareData.course2.name} onChange={(e) => setCompareData({...compareData, course2: {...compareData.course2, name: e.target.value}})} className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-primary-500" />
+                  <div className="flex bg-zinc-200 dark:bg-zinc-800 rounded-lg p-1">
+                    <button onClick={() => setCompareData({...compareData, course2: {...compareData.course2, type: 'url'}})} className={`flex-1 flex justify-center items-center gap-2 py-1.5 text-sm rounded-md transition ${compareData.course2.type === 'url' ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm font-medium' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'}`}><LinkIcon className="w-4 h-4" /> Link</button>
+                    <button onClick={() => setCompareData({...compareData, course2: {...compareData.course2, type: 'pdf'}})} className={`flex-1 flex justify-center items-center gap-2 py-1.5 text-sm rounded-md transition ${compareData.course2.type === 'pdf' ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm font-medium' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'}`}><FileText className="w-4 h-4" /> PDF</button>
+                  </div>
+                  {compareData.course2.type === 'url' ? (
+                    <input type="text" placeholder="Paste URL here..." value={compareData.course2.value} onChange={(e) => setCompareData({...compareData, course2: {...compareData.course2, value: e.target.value}})} className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-primary-500" />
+                  ) : (
+                    <input type="file" accept=".pdf" onChange={(e) => setCompareData({...compareData, course2: {...compareData.course2, file: e.target.files[0]}})} className="w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900/30 dark:file:text-primary-400" />
+                  )}
+                </div>
+              </div>
+              
+              <div className="p-6 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex justify-end gap-3">
+                <button onClick={() => setIsCompareModalOpen(false)} className="px-5 py-2.5 rounded-lg text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">Cancel</button>
+                <button onClick={handleCompareSubmit} className="px-5 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition flex items-center gap-2 shadow-sm">
+                  <GitCompare className="w-4 h-4" /> Analyze & Compare
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
