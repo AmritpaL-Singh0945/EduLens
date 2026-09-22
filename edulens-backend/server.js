@@ -9,8 +9,11 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from './models/User.js';
 
-// The modernized, ESM-native PDF parser!
-import pdf from 'pdf-parse-debugging-disabled';
+import { createRequire } from 'module';
+
+// The standard PDF parser (CommonJS import via createRequire)
+const require = createRequire(import.meta.url);
+const pdf = require('pdf-parse');
 
 dotenv.config();
 

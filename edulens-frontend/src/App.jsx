@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
 import { Login, Signup } from './components/Auth';
 import { Home } from './components/Home';
-import { LogOut, LayoutDashboard, History, Settings, Upload, Sun, Moon, ArrowRight, BookOpen, Trash2, GitCompare, X, FileText, Link as LinkIcon } from 'lucide-react';
+import { LogOut, LayoutDashboard, History, Settings, Upload, Sun, Moon, ArrowRight, BookOpen, Trash2, GitCompare, X, FileText, Link as LinkIcon, BrainCircuit, Code, Zap, Lightbulb, Menu } from 'lucide-react';
 
 const SYSTEM_PROMPT = {
   role: "system",
@@ -20,7 +20,7 @@ You are EduLens AI, an advanced Course Content Analyzer and Learning Assistant.
 </core_directives>
 
 <workflow_states>
-[STATE 1: INGESTION] - User pastes content, URLs, or PDF.
+[STATE 1: KNOWLEDGE CHECK] - Output <ui_mcq> JSON block to assess prior knowledge.
 [STATE 2: STRUCTURAL ANALYSIS] - Output <ui_analysis> JSON card (Modules or Roadmap).
 [STATE 3: DEEP DIVE] - Expand on topics or teach.
 [STATE 4: ASSESSMENT] - Output <ui_mcq> JSON block for quizzes.
@@ -28,11 +28,32 @@ You are EduLens AI, an advanced Course Content Analyzer and Learning Assistant.
 </workflow_states>
 
 <operational_rules>
+1. FIRST-TIME UPLOADS: When a user uploads a syllabus, link, or requests a roadmap, FIRST enter [STATE 2: STRUCTURAL ANALYSIS] and generate the full <ui_analysis> detailed course roadmap.
+2. IMMEDIATE KNOWLEDGE CHECK: In the EXACT SAME response, immediately after the <ui_analysis> block, enter [STATE 1: KNOWLEDGE CHECK] and output a <ui_mcq> asking the user about their prior knowledge of these specific topics (e.g., A: Complete Beginner, B: Know the basics, C: Advanced). Both JSON blocks MUST be in your very first response!
+3. AFTER KNOWLEDGE CHECK: Once they answer the MCQ, provide a revised personalized roadmap or jump straight into teaching the topics they don't know.
+4. DEEP DIVES: If the user says "Let's dive deeper into...", YOU MUST ONLY enter [STATE 3: DEEP DIVE] and output the <ui_lesson> block. Do NOT generate roadmaps or MCQs for deep dives.
+5. STRICT OUTPUT: For roadmaps, ALWAYS wrap JSON in <ui_analysis>...</ui_analysis>. For MCQs/Knowledge Checks, ALWAYS wrap JSON in <ui_mcq>...</ui_mcq>.
 
 ## STATE 2: STRUCTURAL ANALYSIS
 When generating an analysis or roadmap, you MUST output the <ui_analysis> JSON block. You can use either the "modules" format or the "roadmap" format depending on what fits best.
-FORMAT 1 (Modules): { "course_title": "...", "difficulty_level": "...", "estimated_hours": 0, "missing_prerequisites": [], "modules": [ { "id": 1, "title": "...", "topics": [], "estimated_hours": 0 } ] }
-FORMAT 2 (Roadmap): { "course_title": "...", "total_estimated_hours": 0, "roadmap": [ { "week": "1", "module": "...", "objectives": [], "activities": [], "estimated_hours": 0 } ] }
+FORMAT 1 (Modules): { "course_title": "...", "difficulty_level": "...", "estimated_hours": 20, "missing_prerequisites": [], "modules": [ { "id": 1, "title": "...", "topics": [], "estimated_hours": 5 } ] }
+FORMAT 2 (Roadmap): { "course_title": "...", "total_estimated_hours": 40, "roadmap": [ { "week": "1", "module": "...", "objectives": [], "activities": [], "estimated_hours": 10 } ] }
+(CRITICAL: Calculate and provide realistic integers for estimated_hours, DO NOT output 0)
+
+## STATE 3: DEEP DIVE
+When expanding on topics or teaching a specific concept (e.g., when the user asks "Let's dive deeper into X"), you MUST output using this EXACT format:
+<ui_lesson>
+{
+  "topic": "The Concept Name",
+  "overview": "A clear, concise explanation of the topic.",
+  "key_concepts": [
+    { "term": "Concept 1", "definition": "Definition..." },
+    { "term": "Concept 2", "definition": "Definition..." }
+  ],
+  "example": "A code example, analogy, or real-world application.",
+  "pro_tip": "A crucial tip, common pitfall, or best practice."
+}
+</ui_lesson>
 
 ## STATE 4: ASSESSMENT
 When asked for an MCQ, quiz, or knowledge check, you MUST output using this EXACT format:
@@ -47,7 +68,23 @@ When asked for an MCQ, quiz, or knowledge check, you MUST output using this EXAC
   }
 }
 </ui_mcq>
-Wait for the user to answer. In your next turn, evaluate their answer, briefly explain why it's correct/incorrect, and ask the next question if appropriate.
+
+## STATE 5: COMPARISON
+When comparing two courses, MUST output a <ui_comparison> block. If they are completely unrelated genres (e.g., Cooking vs Machine Learning), set "are_related" to false.
+<ui_comparison>
+{
+  "course1_title": "...",
+  "course2_title": "...",
+  "are_related": true,
+  "error_message": "Only use if are_related is false to explain why they cannot be compared.",
+  "winner": "Course 1 (or 'Tie')",
+  "differences": ["...", "..."],
+  "course1_pros": ["..."],
+  "course2_pros": ["..."],
+  "verdict": "Final conclusive paragraph."
+}
+</ui_comparison>
+
 </operational_rules>`
 };
 
@@ -64,8 +101,10 @@ const extractSafeJSON = (text, tag) => {
       // Fallback: If AI forgets tags, try to find a JSON object in the text
       const isAnalysis = tag === 'ui_analysis' && (text.includes('"course_title"') || text.includes('"roadmap"') || text.includes('"modules"'));
       const isMcq = tag === 'ui_mcq' && text.includes('"question"') && text.includes('"options"');
+      const isLesson = tag === 'ui_lesson' && text.includes('"topic"') && text.includes('"overview"');
+      const isCompare = tag === 'ui_comparison' && (text.includes('"are_related"') || text.includes('"course1_title"') || text.includes('"verdict"'));
       
-      if (isAnalysis || isMcq) {
+      if (isAnalysis || isMcq || isLesson || isCompare) {
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) rawJson = jsonMatch[0].trim();
       }
@@ -115,12 +154,117 @@ const MCQBlock = ({ mcqData, onAnswerSubmit, isDisabled }) => {
   );
 };
 
+// --- Sub-component for Deep Dive Lessons ---
+const LessonBlock = ({ data }) => {
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xl mt-6 transition-colors duration-300">
+      <div className="bg-gradient-to-r from-primary-600 to-primary-800 px-6 py-5 text-white">
+        <h2 className="text-xl md:text-2xl font-black flex items-center gap-3">
+          <Lightbulb className="w-6 h-6 text-yellow-300" />
+          {data.topic}
+        </h2>
+      </div>
+      <div className="p-6 space-y-6">
+        {data.overview && (
+          <div>
+            <h3 className="text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Overview</h3>
+            <p className="text-zinc-800 dark:text-zinc-200 leading-relaxed text-base">{data.overview}</p>
+          </div>
+        )}
+        
+        {data.key_concepts && data.key_concepts.length > 0 && (
+          <div>
+            <h3 className="text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">Key Concepts</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {data.key_concepts.map((kc, i) => (
+                <div key={i} className="bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-zinc-100 dark:border-zinc-700/50 shadow-sm">
+                  <span className="font-bold text-primary-600 dark:text-primary-400 block mb-1.5">{kc.term}</span>
+                  <span className="text-sm text-zinc-600 dark:text-zinc-300 leading-snug">{kc.definition}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {data.example && (
+          <div className="bg-blue-50 dark:bg-blue-900/10 border-l-4 border-blue-500 p-5 rounded-r-xl">
+            <h3 className="text-sm font-bold text-blue-800 dark:text-blue-400 mb-2 flex items-center gap-2">
+              <Code className="w-4 h-4"/> Example / Analogy
+            </h3>
+            <p className="text-blue-900 dark:text-blue-200 text-sm leading-relaxed">{data.example}</p>
+          </div>
+        )}
+        
+        {data.pro_tip && (
+          <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/50 p-5 rounded-xl flex gap-3 items-start">
+            <Zap className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-bold text-orange-800 dark:text-orange-400 mb-1">Pro Tip</h3>
+              <p className="text-orange-900 dark:text-orange-200 text-sm leading-relaxed">{data.pro_tip}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Sub-component for Course Comparison ---
+const CompareBlock = ({ data }) => {
+  if (data.are_related === false || data.are_related === "false") {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 rounded-2xl p-6 shadow-sm mt-6">
+        <h3 className="text-red-800 dark:text-red-400 font-bold text-lg mb-2 flex items-center gap-2">
+           ⚠️ Cannot Compare Unrelated Courses
+        </h3>
+        <p className="text-red-700 dark:text-red-300 leading-relaxed">{data.error_message}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xl mt-8">
+       <div className="bg-gradient-to-r from-indigo-600 to-purple-700 px-6 py-5 text-white flex justify-between items-center flex-wrap gap-3">
+         <h2 className="text-xl font-black flex items-center gap-2"><GitCompare className="w-6 h-6"/> Course Comparison</h2>
+         {data.winner && <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold tracking-wider">VERDICT: {data.winner}</span>}
+       </div>
+       
+       <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-zinc-200 dark:divide-zinc-800">
+         <div className="p-6 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 mb-4">{data.course1_title}</h3>
+            <h4 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-3">Strengths</h4>
+            <ul className="space-y-3 mb-2">
+              {data.course1_pros?.map((pro, i) => <li key={i} className="flex gap-3 text-sm text-zinc-700 dark:text-zinc-300 leading-snug"><span className="text-emerald-500 font-bold">✓</span> {pro}</li>)}
+            </ul>
+         </div>
+         <div className="p-6 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 mb-4">{data.course2_title}</h3>
+            <h4 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-3">Strengths</h4>
+            <ul className="space-y-3 mb-2">
+              {data.course2_pros?.map((pro, i) => <li key={i} className="flex gap-3 text-sm text-zinc-700 dark:text-zinc-300 leading-snug"><span className="text-emerald-500 font-bold">✓</span> {pro}</li>)}
+            </ul>
+         </div>
+       </div>
+
+       <div className="p-6 bg-zinc-100 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800">
+         <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 mb-3">Key Differences</h4>
+         <ul className="list-disc list-inside space-y-2 text-sm text-zinc-700 dark:text-zinc-300 mb-6 marker:text-zinc-400">
+           {data.differences?.map((diff, i) => <li key={i} className="leading-relaxed">{diff}</li>)}
+         </ul>
+         
+         <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 mb-2">Final Verdict</h4>
+         <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">{data.verdict}</p>
+       </div>
+    </div>
+  );
+};
+
 function Analyzer({ user, setAuth, toggleTheme, isDark }) {
   const [messages, setMessages] = useState([SYSTEM_PROMPT]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('EduLens is thinking...');
   const [greeting, setGreeting] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // History State
   const [history, setHistory] = useState([]);
@@ -180,7 +324,7 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
         c2Text = compareData.course2.value;
       }
 
-      const prompt = `I want to compare two courses to understand their differences in topics, difficulty, and target audience.\n\nCourse 1 (${c1Name}):\n${c1Text}\n\nCourse 2 (${c2Name}):\n${c2Text}\n\nPlease analyze both courses and provide a detailed structured comparison. Highlight similarities, differences, and which course is better suited for specific skill levels. Use markdown formatting to make it highly readable.`;
+      const prompt = `I want to compare two courses. \n\nCourse 1 (${c1Name}):\n${c1Text}\n\nCourse 2 (${c2Name}):\n${c2Text}\n\nPlease enter [STATE 5: COMPARISON] and output the <ui_comparison> JSON block. First, evaluate if they are related genres. If they are completely unrelated (e.g., Programming vs Cooking), set "are_related" to false and provide an error message. Otherwise, provide a detailed structured comparison.`;
       
       // We simulate handleSendMessage directly here since we reset state
       const userMessage = { role: "user", content: prompt, fileName: `Comparison: ${c1Name} vs ${c2Name}` };
@@ -371,6 +515,9 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setAuth(null);
+    setHistory([]);
+    setMessages([SYSTEM_PROMPT]);
+    setSessionId(Date.now().toString());
     navigate('/login');
   };
 
@@ -378,8 +525,13 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
     <div className="h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex font-sans selection:bg-primary-500/30 transition-colors duration-300">
       <input type="file" accept="application/pdf" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
 
+      {/* SIDEBAR OVERLAY */}
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
       {/* SIDEBAR */}
-      <aside className="w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 hidden md:flex flex-col justify-between p-4 transition-colors duration-300 shadow-sm z-20 relative">
+      <aside className={`w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col justify-between p-4 transition-transform duration-300 shadow-sm z-40 fixed md:relative h-full ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between mb-8 px-2 mt-2 shrink-0">
             <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition cursor-pointer">
@@ -467,11 +619,16 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300">
         
         {/* Mobile Header */}
-        <header className="flex justify-between items-center px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md sticky top-0 z-10 md:hidden shadow-sm">
-          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition cursor-pointer">
-            <BookOpen className="w-5 h-5 text-primary-600 dark:text-primary-500" />
-            <span className="font-bold text-sm tracking-wide text-zinc-900 dark:text-zinc-100">EduLens</span>
-          </Link>
+        <header className="flex justify-between items-center px-4 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md sticky top-0 z-10 md:hidden shadow-sm">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition">
+              <Menu className="w-5 h-5" />
+            </button>
+            <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition cursor-pointer">
+              <BookOpen className="w-5 h-5 text-primary-600 dark:text-primary-500" />
+              <span className="font-bold text-sm tracking-wide text-zinc-900 dark:text-zinc-100">EduLens</span>
+            </Link>
+          </div>
           <div className="flex items-center gap-1">
             <button onClick={toggleTheme} className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-2.5 py-1.5 rounded-lg transition" title="Toggle theme">
               {isDark ? <><Sun className="w-3.5 h-3.5" /> Light</> : <><Moon className="w-3.5 h-3.5" /> Dark</>}
@@ -500,7 +657,7 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Paste your syllabus, topic list, or course URL here..."
+                  placeholder="Paste a link to a syllabus, course, or text..."
                   rows={4}
                   className="w-full bg-transparent resize-none outline-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 text-base leading-relaxed"
                 />
@@ -551,22 +708,32 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-between py-6 overflow-hidden h-full">
-              <div className="space-y-12 overflow-y-auto pb-10 pr-2 scrollbar-thin h-full">
+              <div className="space-y-12 overflow-y-auto overflow-x-hidden pb-10 pr-2 scrollbar-thin h-full w-full">
                 {activeMessages.map((msg, idx) => {
                   const isLatestMessage = idx === activeMessages.length - 1;
                   
                   // --- Robust UI Extraction ---
                   const analysisData = msg.role === 'assistant' ? extractSafeJSON(msg.content, 'ui_analysis') : null;
                   const mcqData = msg.role === 'assistant' ? extractSafeJSON(msg.content, 'ui_mcq') : null;
+                  const lessonData = msg.role === 'assistant' ? extractSafeJSON(msg.content, 'ui_lesson') : null;
+                  const compareDataExtracted = msg.role === 'assistant' ? extractSafeJSON(msg.content, 'ui_comparison') : null;
                   
                   let displayContent = msg.content;
-                  if (analysisData) {
-                    displayContent = displayContent.replace(/<ui_analysis>[\s\S]*?<\/ui_analysis>/i, '').trim();
-                    if (!msg.content.includes('<ui_analysis>')) displayContent = displayContent.replace(/```json[\s\S]*?```/i, '').replace(/\{[\s\S]*\}/, '').trim();
-                  }
-                  if (mcqData) {
-                    displayContent = displayContent.replace(/<ui_mcq>[\s\S]*?<\/ui_mcq>/i, '').trim();
-                    if (!msg.content.includes('<ui_mcq>')) displayContent = displayContent.replace(/```json[\s\S]*?```/i, '').replace(/\{[\s\S]*\}/, '').trim();
+                  if (msg.role === 'assistant') {
+                    // 1. Scrub Workflow States text that AI sometimes leaks
+                    displayContent = displayContent.replace(/\[STATE.*?\].*?\n?/gi, '').trim();
+                    
+                    // 2. Scrub specific XML tags
+                    const tagsToScrub = ['ui_analysis', 'ui_mcq', 'ui_lesson', 'ui_comparison'];
+                    tagsToScrub.forEach(tag => {
+                      displayContent = displayContent.replace(new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`, 'gi'), '').trim();
+                    });
+                    
+                    // 3. Fallback: Scrub raw json blocks if we managed to extract valid data (stops raw json blobs leaking)
+                    if (analysisData || mcqData || lessonData || compareDataExtracted) {
+                      displayContent = displayContent.replace(/```json[\s\S]*?```/gi, '').trim();
+                      displayContent = displayContent.replace(/^\{[\s\S]*\}$/g, '').trim();
+                    }
                   }
 
                   return (
@@ -595,7 +762,7 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
                                 </div>
                               </div>
                             ) : (
-                              <div className="bg-primary-600 text-white shadow-sm rounded-2xl rounded-tr-sm px-5 py-3 text-[15px] inline-block whitespace-pre-wrap leading-relaxed">
+                              <div className="bg-primary-600 text-white shadow-sm rounded-2xl rounded-tr-sm px-5 py-3 text-[15px] inline-block whitespace-pre-wrap leading-relaxed break-words">
                                 {msg.content}
                               </div>
                             )}
@@ -608,20 +775,11 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
                           
                           {/* Markdown Text */}
                           {displayContent && (
-                            <div className="text-base md:text-lg leading-relaxed text-zinc-700 dark:text-zinc-300 prose dark:prose-invert max-w-none prose-p:my-4 prose-headings:text-zinc-900 dark:prose-headings:text-zinc-100 prose-headings:font-bold prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-strong:text-zinc-900 dark:prose-strong:text-zinc-100">
+                            <div className="text-base md:text-lg leading-relaxed text-zinc-700 dark:text-zinc-300 prose dark:prose-invert max-w-none prose-p:my-4 prose-headings:text-zinc-900 dark:prose-headings:text-zinc-100 prose-headings:font-bold prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-strong:text-zinc-900 dark:prose-strong:text-zinc-100 break-words overflow-x-auto">
                               <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
                             </div>
                           )}
 
-                          {/* Interactive MCQ Block */}
-                          {mcqData && (
-                            <MCQBlock 
-                              mcqData={mcqData} 
-                              onAnswerSubmit={handleSendMessage} 
-                              isDisabled={!isLatestMessage || isLoading} 
-                            />
-                          )}
-                          
                           {/* Structured Analysis / Roadmap Card */}
                           {analysisData && (
                             <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xl mt-8">
@@ -687,7 +845,7 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
                               {analysisData.modules && (
                                 <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                                   {analysisData.modules.map((mod, i) => (
-                                    <div key={i} onClick={() => handleSendMessage(`Let's dive deeper into ${mod.title}`)} className="bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700/50 rounded-xl p-5 md:p-6 shadow-sm hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-md transition cursor-pointer group">
+                                    <div key={i} onClick={() => { if (!isLoading) handleSendMessage(`Let's dive deeper into ${mod.title}`); }} className={`bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700/50 rounded-xl p-5 md:p-6 shadow-sm transition group ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-md cursor-pointer'}`}>
                                       <div className="flex justify-between items-start mb-4">
                                         <h3 className="text-zinc-900 dark:text-zinc-100 font-bold text-lg group-hover:text-primary-600 dark:group-hover:text-primary-400 transition leading-tight">Module {mod.id || i+1}: {mod.title}</h3>
                                         <span className="text-xs text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-900/50 px-2.5 py-1 rounded-full font-bold">{mod.estimated_hours}h</span>
@@ -705,6 +863,21 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
 
                             </div>
                           )}
+
+                          {/* Interactive MCQ Block (Rendered after Analysis) */}
+                          {mcqData && (
+                            <MCQBlock 
+                              mcqData={mcqData} 
+                              onAnswerSubmit={handleSendMessage} 
+                              isDisabled={!isLatestMessage || isLoading} 
+                            />
+                          )}
+
+                          {/* Deep Dive Lesson Block */}
+                          {lessonData && <LessonBlock data={lessonData} />}
+
+                          {/* Course Comparison Block */}
+                          {compareDataExtracted && <CompareBlock data={compareDataExtracted} />}
 
                         </div>
                       )}
@@ -725,7 +898,7 @@ function Analyzer({ user, setAuth, toggleTheme, isDark }) {
                 <div ref={messagesEndRef} />
               </div>
 
-              <div className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 shadow-xl focus-within:border-primary-500 dark:focus-within:border-primary-500 transition-colors flex items-center gap-3 shrink-0 mb-4 z-10">
+              <div className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 shadow-xl focus-within:border-primary-500 dark:focus-within:border-primary-500 transition-colors flex items-center gap-3 shrink-0 mb-4 z-10 relative">
                 <div className="flex items-center gap-1 shrink-0">
                   <button type="button" onClick={() => fileInputRef.current.click()} className="p-2 text-zinc-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-zinc-800 rounded-xl transition">
                     <Upload className="w-5 h-5" />
